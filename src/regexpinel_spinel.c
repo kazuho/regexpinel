@@ -9,6 +9,13 @@ typedef struct {
     size_t insn_count;
 } nr_native_pattern_t;
 
+typedef struct {
+    bool matched;
+    size_t start_pos;
+    size_t end_pos;
+    size_t capture_count;
+} nr_native_match_range_t;
+
 static VALUE cSpinelPattern;
 
 static int
@@ -18,6 +25,18 @@ nr_native_noop_on_match(void *data, size_t start_pos, size_t end_pos, size_t cap
     (void)start_pos;
     (void)end_pos;
     (void)capture_count;
+    return 0;
+}
+
+static int
+nr_native_record_on_match(void *data, size_t start_pos, size_t end_pos, size_t capture_count)
+{
+    nr_native_match_range_t *range = (nr_native_match_range_t *)data;
+
+    range->matched = true;
+    range->start_pos = start_pos;
+    range->end_pos = end_pos;
+    range->capture_count = capture_count;
     return 0;
 }
 
@@ -105,6 +124,50 @@ nr_native_pattern_initialize(VALUE self, VALUE rb_code)
     return self;
 }
 
+static bool
+nr_native_pattern_match_range(nr_native_pattern_t *pattern, VALUE rb_input, size_t start_pos, nr_native_match_range_t *range)
+{
+    memset(range, 0, sizeof(*range));
+    return nr_match_core(
+        pattern->code,
+        pattern->insn_count,
+        (const uint8_t *)RSTRING_PTR(rb_input),
+        (size_t)RSTRING_LEN(rb_input),
+        start_pos,
+        nr_native_record_on_match,
+        range
+    );
+}
+
+static bool
+nr_native_pattern_find_range(nr_native_pattern_t *pattern, VALUE rb_input, size_t start_pos, nr_native_match_range_t *range)
+{
+    size_t input_len = (size_t)RSTRING_LEN(rb_input);
+    size_t pos = start_pos;
+
+    while (pos <= input_len) {
+        if (nr_native_pattern_match_range(pattern, rb_input, pos, range)) {
+            return true;
+        }
+        ++pos;
+    }
+
+    return false;
+}
+
+static VALUE
+nr_native_replace_range(VALUE rb_input, VALUE rb_replacement, size_t start_pos, size_t end_pos)
+{
+    VALUE result = rb_str_subseq(rb_input, 0, 0);
+    const char *input = RSTRING_PTR(rb_input);
+    size_t input_len = (size_t)RSTRING_LEN(rb_input);
+
+    rb_str_cat(result, input, start_pos);
+    rb_str_append(result, rb_replacement);
+    rb_str_cat(result, input + end_pos, input_len - end_pos);
+    return result;
+}
+
 static VALUE
 nr_native_pattern_match_p(int argc, VALUE *argv, VALUE self)
 {
@@ -132,6 +195,66 @@ nr_native_pattern_match_p(int argc, VALUE *argv, VALUE self)
     );
 
     return matched ? Qtrue : Qfalse;
+}
+
+static VALUE
+nr_native_pattern_sub(VALUE self, VALUE rb_input, VALUE rb_replacement)
+{
+    nr_native_pattern_t *pattern;
+    nr_native_match_range_t range;
+
+    StringValue(rb_input);
+    StringValue(rb_replacement);
+    TypedData_Get_Struct(self, nr_native_pattern_t, &nr_native_pattern_type, pattern);
+
+    if (!nr_native_pattern_find_range(pattern, rb_input, 0, &range)) {
+        return rb_str_dup(rb_input);
+    }
+
+    return nr_native_replace_range(rb_input, rb_replacement, range.start_pos, range.end_pos);
+}
+
+static VALUE
+nr_native_pattern_gsub(VALUE self, VALUE rb_input, VALUE rb_replacement)
+{
+    nr_native_pattern_t *pattern;
+    nr_native_match_range_t range;
+    VALUE result;
+    size_t input_len;
+    size_t search_pos = 0;
+    size_t copy_pos = 0;
+
+    StringValue(rb_input);
+    StringValue(rb_replacement);
+    TypedData_Get_Struct(self, nr_native_pattern_t, &nr_native_pattern_type, pattern);
+
+    input_len = (size_t)RSTRING_LEN(rb_input);
+    result = rb_str_subseq(rb_input, 0, 0);
+
+    while (search_pos <= input_len) {
+        if (!nr_native_pattern_find_range(pattern, rb_input, search_pos, &range)) {
+            break;
+        }
+
+        rb_str_cat(result, RSTRING_PTR(rb_input) + copy_pos, range.start_pos - copy_pos);
+        rb_str_append(result, rb_replacement);
+
+        if (range.end_pos == range.start_pos) {
+            if (range.end_pos >= input_len) {
+                copy_pos = range.end_pos;
+                break;
+            }
+            rb_str_cat(result, RSTRING_PTR(rb_input) + range.end_pos, 1);
+            search_pos = range.end_pos + 1;
+            copy_pos = search_pos;
+        } else {
+            search_pos = range.end_pos;
+            copy_pos = range.end_pos;
+        }
+    }
+
+    rb_str_cat(result, RSTRING_PTR(rb_input) + copy_pos, input_len - copy_pos);
+    return result;
 }
 
 static VALUE
@@ -185,4 +308,6 @@ Init_regexpinel_spinel(void)
     rb_define_alloc_func(cSpinelPattern, nr_native_pattern_alloc);
     rb_define_method(cSpinelPattern, "initialize", nr_native_pattern_initialize, 1);
     rb_define_method(cSpinelPattern, "match?", nr_native_pattern_match_p, -1);
+    rb_define_method(cSpinelPattern, "sub", nr_native_pattern_sub, 2);
+    rb_define_method(cSpinelPattern, "gsub", nr_native_pattern_gsub, 2);
 }

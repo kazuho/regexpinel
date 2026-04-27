@@ -50,9 +50,37 @@ module WrapperTest
     end
   end
 
+  def test_substitution
+    # Substitution uses the VM's currently reported accepted range. The VM does
+    # not implement CRuby quantifier greediness yet.
+    cases = [
+      ["ab", "zab", "X", "zX", "zX"],
+      ["ab", "zzz", "X", "zzz", "zzz"],
+      ["a|b", "cab", "X", "cXb", "cXX"],
+      ["a+", "caaab", "X", "cXaab", "cXXXb"],
+      [".b", "zab", "X", "zX", "zX"],
+      ["a*", "bbbb", "X", "Xbbbb", "XbXbXbXbX"],
+      ["a*", "", "X", "X", "X"]
+    ]
+
+    i = 0
+    while i < cases.length
+      pattern = cases[i][0]
+      input = cases[i][1]
+      replacement = cases[i][2]
+      expected_sub = cases[i][3]
+      expected_gsub = cases[i][4]
+      wrapper = Regexpinel::CRuby.new(pattern)
+      assert_eq(wrapper.sub(input, replacement), expected_sub, "sub #{pattern.inspect} on #{input.inspect}")
+      assert_eq(wrapper.gsub(input, replacement), expected_gsub, "gsub #{pattern.inspect} on #{input.inspect}")
+      i += 1
+    end
+  end
+
   def main
     test_repeated_calls
     test_compatibility
+    test_substitution
     assert_eq(Regexpinel::Pattern.compile("ab").match?("ab"), true, "legacy Pattern.compile")
     puts "ok"
   end

@@ -19,6 +19,7 @@ Initial scope:
 
 - Thompson-style VM executor
 - boolean `match?`
+- byte-subset `sub` / `gsub` replacement
 - flat integer instruction encoding
 - reusable execution context
 - no allocation inside the executor
@@ -39,7 +40,8 @@ Spinel-backed extension:
 - `Regexpinel::CRuby.new(pattern)` compiles the same bytecode and runs the Ruby
   executor directly inside CRuby
 - `Regexpinel::Spinel.new(pattern)` builds a Ruby-facing Spinel-backed regexp object
-  with `match?(string, start_pos = 0)`
+  with `match?(string, start_pos = 0)`, `sub(string, replacement)`, and
+  `gsub(string, replacement)`
 - `Regexpinel::Spinel.match_code?(code, string, start_pos = 0)` calls the native
   executor; Ruby argument conversion, bytecode storage, and result construction
   happen outside the executor core
@@ -49,6 +51,11 @@ Spinel-backed extension:
 - `tools/proof_vm_argv_raw.c`: proof executable wrapper that decodes argv into a
   fixed instruction buffer and supplies `puts`/`printf`-style callbacks outside
   the allocation-free matcher core
+
+Substitution support is deliberately narrow. It uses the VM callback's reported
+accepted byte range and performs literal string replacement outside the executor.
+Capture expansion, backreferences, and CRuby-compatible greedy quantifier ranges
+are not implemented yet.
 
 From the regexpinel repository root, build the extension:
 

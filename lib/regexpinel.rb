@@ -3,11 +3,27 @@ require_relative "regexpinel/wrapper"
 
 unless Object.private_method_defined?(:nr_on_match)
   def nr_on_match(start_pos, end_pos, capture_count)
+    Regexpinel.record_match(start_pos, end_pos, capture_count)
     0
   end
 end
 
 module Regexpinel
+  @last_match_start = -1
+  @last_match_end = -1
+  @last_match_capture_count = -1
+
+  class << self
+    attr_reader :last_match_start, :last_match_end, :last_match_capture_count
+  end
+
+  def self.record_match(start_pos, end_pos, capture_count)
+    @last_match_start = start_pos
+    @last_match_end = end_pos
+    @last_match_capture_count = capture_count
+    0
+  end
+
   class Pattern
     attr_reader :pattern
 
@@ -25,8 +41,65 @@ module Regexpinel
       nr_run_with_context(@code, string, start_pos, @context)
     end
 
+    def sub(string, replacement)
+      range = find_match_range(string, 0)
+      return string.dup unless range
+
+      replace_range(string, range[0], range[1], replacement)
+    end
+
+    def gsub(string, replacement)
+      result = string.byteslice(0, 0).dup
+      search_pos = 0
+      copy_pos = 0
+
+      while search_pos <= string.bytesize
+        range = find_match_range(string, search_pos)
+        break unless range
+
+        start_pos = range[0]
+        end_pos = range[1]
+        result << string.byteslice(copy_pos, start_pos - copy_pos).to_s
+        result << replacement
+
+        if end_pos == start_pos
+          break if end_pos >= string.bytesize
+          result << string.byteslice(end_pos, 1).to_s
+          search_pos = end_pos + 1
+          copy_pos = search_pos
+        else
+          search_pos = end_pos
+          copy_pos = end_pos
+        end
+      end
+
+      result << string.byteslice(copy_pos, string.bytesize - copy_pos).to_s
+      result
+    end
+
     def instruction_count
       @code.length / 3
+    end
+
+    private
+
+    def find_match_range(string, start_pos)
+      pos = start_pos
+      while pos <= string.bytesize
+        if nr_run_with_context(@code, string, pos, @context)
+          return [Regexpinel.last_match_start, Regexpinel.last_match_end]
+        end
+        pos += 1
+      end
+      nil
+    end
+
+    def replace_range(string, start_pos, end_pos, replacement)
+      result = string.byteslice(0, 0).dup
+      result << string.byteslice(0, start_pos).to_s
+      result << replacement
+      result << string.byteslice(end_pos, string.bytesize - end_pos).to_s
+      result
     end
   end
 

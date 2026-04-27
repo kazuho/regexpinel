@@ -7,7 +7,8 @@ require_relative "../lib/runtime"
 def build_spinel_extension
   root = File.expand_path("..", __dir__)
   bundle = File.join(root, "regexpinel_spinel.bundle")
-  return if File.exist?(bundle)
+  wrapper_source = File.join(root, "src/regexpinel_spinel.c")
+  return if File.exist?(bundle) && File.mtime(bundle) >= File.mtime(wrapper_source)
 
   ruby = RbConfig.ruby
   unless system(ruby, "extconf.rb", chdir: root, out: File::NULL, err: File::NULL)
@@ -79,6 +80,22 @@ module SpinelExtensionTest
       spinel_regexp = Regexpinel::Spinel.new(pattern)
       regexp_actual = spinel_regexp.match?(input, start_pos)
       assert_eq(regexp_actual, expected, "spinel new #{pattern.inspect} on #{input.inspect} at #{start_pos}")
+    end
+
+    substitution_cases = [
+      ["ab", "zab", "X", "zX", "zX"],
+      ["ab", "zzz", "X", "zzz", "zzz"],
+      ["a|b", "cab", "X", "cXb", "cXX"],
+      ["a+", "caaab", "X", "cXaab", "cXXXb"],
+      [".b", "zab", "X", "zX", "zX"],
+      ["a*", "bbbb", "X", "Xbbbb", "XbXbXbXbX"],
+      ["a*", "", "X", "X", "X"]
+    ].freeze
+
+    substitution_cases.each do |pattern, input, replacement, expected_sub, expected_gsub|
+      spinel_pattern = Regexpinel::Spinel.new(pattern)
+      assert_eq(spinel_pattern.sub(input, replacement), expected_sub, "spinel sub #{pattern.inspect} on #{input.inspect}")
+      assert_eq(spinel_pattern.gsub(input, replacement), expected_gsub, "spinel gsub #{pattern.inspect} on #{input.inspect}")
     end
 
     begin

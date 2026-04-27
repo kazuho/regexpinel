@@ -68,6 +68,7 @@ Benchmark:
 
 ```sh
 SPINEL=/path/to/spinel ruby benchmark/bench_synthetic.rb
+SPINEL=/path/to/spinel ruby benchmark/bench_substitution.rb
 ```
 
 The synthetic benchmark compares three implementations over the same supported
@@ -79,3 +80,17 @@ An example run on this machine produced:
 | CRuby `Regexp` | CRuby's built-in regexp engine | 18,634,846 | 1.00x |
 | `Regexpinel::Spinel` | Patched Spinel-generated C for the Ruby VM core, called from a CRuby extension | 30,425,565 | 1.63x |
 | `Regexpinel::CRuby` | Same bytecode executed by the Ruby VM | 933,798 | 0.05x |
+
+The substitution benchmark compares literal replacement for byte-subset cases
+where regexpinel and CRuby produce the same output. It writes raw result data to
+`benchmark/results/substitution.json`. An example run on this machine with
+`loops=200` produced:
+
+| Operation | Implementation | Avg Ops/Sec | Vs CRuby |
+| --- | --- | ---: | ---: |
+| `sub` | CRuby `Regexp` | 5,043,792 | 1.00x |
+| `sub` | `Regexpinel::Spinel` | 12,999,355 | 2.58x |
+| `sub` | `Regexpinel::CRuby` | 419,464 | 0.08x |
+| `gsub` | CRuby `Regexp` | 3,190,835 | 1.00x |
+| `gsub` | `Regexpinel::Spinel` | 11,245,002 | 3.52x |
+| `gsub` | `Regexpinel::CRuby` | 312,826 | 0.10x |

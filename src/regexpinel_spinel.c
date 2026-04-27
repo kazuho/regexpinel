@@ -5,6 +5,8 @@
 
 typedef struct {
     int32_t *code;
+    int64_t *closure_masks;
+    int64_t *closure_matches;
     size_t code_len;
     size_t insn_count;
 } nr_native_pattern_t;
@@ -74,6 +76,8 @@ nr_native_pattern_free(void *ptr)
     }
 
     xfree(pattern->code);
+    xfree(pattern->closure_masks);
+    xfree(pattern->closure_matches);
     xfree(pattern);
 }
 
@@ -85,7 +89,10 @@ nr_native_pattern_size(const void *ptr)
     if (!pattern) {
         return 0;
     }
-    return sizeof(*pattern) + pattern->code_len * sizeof(*pattern->code);
+    return sizeof(*pattern) +
+        pattern->code_len * sizeof(*pattern->code) +
+        pattern->insn_count * sizeof(*pattern->closure_masks) +
+        pattern->insn_count * sizeof(*pattern->closure_matches);
 }
 
 static const rb_data_type_t nr_native_pattern_type = {
@@ -117,6 +124,28 @@ nr_native_code_array(VALUE rb_code, size_t *code_len)
     return code;
 }
 
+static int64_t *
+nr_native_i64_array(VALUE rb_array, size_t expected_len)
+{
+    int64_t *values;
+    long len;
+    long i;
+
+    Check_Type(rb_array, T_ARRAY);
+    len = RARRAY_LEN(rb_array);
+    if ((size_t)len != expected_len) {
+        rb_raise(rb_eArgError, "metadata array length must match instruction count");
+    }
+
+    values = ALLOC_N(int64_t, len);
+    for (i = 0; i < len; ++i) {
+        VALUE item = rb_ary_entry(rb_array, i);
+        values[i] = (int64_t)NUM2LL(item);
+    }
+
+    return values;
+}
+
 static VALUE
 nr_native_pattern_alloc(VALUE klass)
 {
@@ -129,21 +158,28 @@ nr_native_pattern_alloc(VALUE klass)
 }
 
 static VALUE
-nr_native_pattern_initialize(VALUE self, VALUE rb_code)
+nr_native_pattern_initialize(int argc, VALUE *argv, VALUE self)
 {
+    VALUE rb_code;
+    VALUE rb_closure_masks;
+    VALUE rb_closure_matches;
     nr_native_pattern_t *pattern;
     long code_len;
 
+    rb_scan_args(argc, argv, "30", &rb_code, &rb_closure_masks, &rb_closure_matches);
     Check_Type(rb_code, T_ARRAY);
     code_len = RARRAY_LEN(rb_code);
     if (code_len % 3 != 0) {
         rb_raise(rb_eArgError, "instruction array length must be a multiple of 3");
     }
-
     TypedData_Get_Struct(self, nr_native_pattern_t, &nr_native_pattern_type, pattern);
     xfree(pattern->code);
+    xfree(pattern->closure_masks);
+    xfree(pattern->closure_matches);
     pattern->code = nr_native_code_array(rb_code, &pattern->code_len);
     pattern->insn_count = pattern->code_len / 3;
+    pattern->closure_masks = nr_native_i64_array(rb_closure_masks, pattern->insn_count);
+    pattern->closure_matches = nr_native_i64_array(rb_closure_matches, pattern->insn_count);
 
     return self;
 }
@@ -154,6 +190,8 @@ nr_native_pattern_match_range(nr_native_pattern_t *pattern, VALUE rb_input, size
     memset(range, 0, sizeof(*range));
     return nr_match_core(
         pattern->code,
+        pattern->closure_masks,
+        pattern->closure_matches,
         pattern->insn_count,
         (const uint8_t *)RSTRING_PTR(rb_input),
         (size_t)RSTRING_LEN(rb_input),
@@ -213,6 +251,8 @@ nr_native_pattern_match_p(int argc, VALUE *argv, VALUE self)
     TypedData_Get_Struct(self, nr_native_pattern_t, &nr_native_pattern_type, pattern);
     matched = nr_match_core(
         pattern->code,
+        pattern->closure_masks,
+        pattern->closure_matches,
         pattern->insn_count,
         (const uint8_t *)RSTRING_PTR(rb_input),
         (size_t)RSTRING_LEN(rb_input),
@@ -288,15 +328,19 @@ static VALUE
 nr_native_match_code_p(int argc, VALUE *argv, VALUE self)
 {
     VALUE rb_code;
+    VALUE rb_closure_masks;
+    VALUE rb_closure_matches;
     VALUE rb_input;
     VALUE rb_start_pos;
     int32_t *code;
+    int64_t *closure_masks;
+    int64_t *closure_matches;
     size_t code_len;
     size_t start_pos = 0;
     bool matched;
 
     (void)self;
-    rb_scan_args(argc, argv, "21", &rb_code, &rb_input, &rb_start_pos);
+    rb_scan_args(argc, argv, "41", &rb_code, &rb_closure_masks, &rb_closure_matches, &rb_input, &rb_start_pos);
     Check_Type(rb_code, T_ARRAY);
     StringValue(rb_input);
     if (!NIL_P(rb_start_pos)) {
@@ -309,8 +353,12 @@ nr_native_match_code_p(int argc, VALUE *argv, VALUE self)
     }
 
     code = nr_native_code_array(rb_code, &code_len);
+    closure_masks = nr_native_i64_array(rb_closure_masks, code_len / 3);
+    closure_matches = nr_native_i64_array(rb_closure_matches, code_len / 3);
     matched = nr_match_core(
         code,
+        closure_masks,
+        closure_matches,
         code_len / 3,
         (const uint8_t *)RSTRING_PTR(rb_input),
         (size_t)RSTRING_LEN(rb_input),
@@ -318,6 +366,8 @@ nr_native_match_code_p(int argc, VALUE *argv, VALUE self)
         nr_native_noop_on_match,
         NULL
     );
+    xfree(closure_masks);
+    xfree(closure_matches);
     xfree(code);
 
     return matched ? Qtrue : Qfalse;
@@ -333,7 +383,7 @@ Init_regexpinel_spinel(void)
 
     cSpinelPattern = rb_define_class_under(mSpinel, "Pattern", rb_cObject);
     rb_define_alloc_func(cSpinelPattern, nr_native_pattern_alloc);
-    rb_define_method(cSpinelPattern, "initialize", nr_native_pattern_initialize, 1);
+    rb_define_method(cSpinelPattern, "initialize", nr_native_pattern_initialize, -1);
     rb_define_method(cSpinelPattern, "match?", nr_native_pattern_match_p, -1);
     rb_define_method(cSpinelPattern, "sub", nr_native_pattern_sub, 2);
     rb_define_method(cSpinelPattern, "gsub", nr_native_pattern_gsub, 2);

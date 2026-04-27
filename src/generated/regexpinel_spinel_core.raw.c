@@ -4,6 +4,10 @@ static const char *sp_sym_to_s(sp_sym id){(void)id;return "";}
 
 static const char * gv_nr_proof_code = "";
 static mrb_int gv_nr_proof_insn_count = 0;
+static const char * gv_nr_proof_closure_masks = "";
+static const char * gv_nr_proof_closure_matches = "";
+static mrb_int gv_nr_proof_ret_mask = 0;
+static mrb_int gv_nr_proof_ret_match = 0;
 static mrb_int sp_nr_core_add_state(mrb_int lv_pc, mrb_int lv_state_mask);
 static mrb_bool sp_nr_core_match(const char * lv_input, mrb_int lv_input_len, mrb_int lv_start_pos);
 static mrb_int sp_nr_on_match(mrb_int lv_start_pos, mrb_int lv_end_pos, mrb_int lv_capture_count);
@@ -11,10 +15,16 @@ static inline mrb_int sp_nr_core_insn_count(void);
 static inline mrb_int sp_nr_proof_slot_offset(mrb_int lv_field_index);
 static mrb_int sp_nr_proof_write_field(mrb_int lv_field_index, mrb_int lv_value);
 static mrb_int sp_nr_proof_read_field(mrb_int lv_field_index);
+static mrb_int sp_nr_proof_write_meta(mrb_int lv_buffer, mrb_int lv_pc, mrb_int lv_value);
+static mrb_int sp_nr_proof_read_meta(mrb_int lv_buffer, mrb_int lv_pc);
+static mrb_int sp_nr_proof_compute_closure(mrb_int lv_start_pc);
+static inline mrb_int sp_nr_proof_compile_closures(void);
 static mrb_int sp_nr_proof_decode_code(const char * lv_code_csv);
 static inline mrb_int sp_nr_core_op(mrb_int lv_pc);
 static inline mrb_int sp_nr_core_arg1(mrb_int lv_pc);
 static inline mrb_int sp_nr_core_arg2(mrb_int lv_pc);
+static inline mrb_int sp_nr_core_closure_mask(mrb_int lv_pc);
+static inline mrb_int sp_nr_core_closure_match(mrb_int lv_pc);
 static mrb_bool sp_nr_poc_run(const char * lv_code_csv, const char * lv_input, mrb_int lv_start_pos);
 
 static mrb_int cst_NR_OP_CHAR = 0;
@@ -25,6 +35,8 @@ static mrb_int cst_NR_OP_MATCH = 0;
 static mrb_int cst_NR_PROOF_MAX_INSNS = 0;
 static mrb_int cst_NR_PROOF_SLOT_SIZE = 0;
 static mrb_int cst_NR_PROOF_BUFFER_SIZE = 0;
+static mrb_int cst_NR_PROOF_META_SLOT_SIZE = 0;
+static mrb_int cst_NR_PROOF_META_BUFFER_SIZE = 0;
 
 static mrb_int sp_nr_core_add_state(mrb_int lv_pc, mrb_int lv_state_mask) {
     mrb_int lv_stack0 = 0;
@@ -146,19 +158,9 @@ static mrb_bool sp_nr_core_match(const char * lv_input, mrb_int lv_input_len, mr
         lv_bit = (1 << lv_pc);
         if (((lv_current_mask & lv_bit) != 0)) {
           lv_op = sp_nr_core_op(lv_pc);
-          if ((lv_op == 1)) {
-            if ((lv_codepoint == sp_nr_core_arg1(lv_pc))) {
-              lv_add_result = sp_nr_core_add_state(sp_nr_core_arg2(lv_pc), lv_next_mask);
-              lv_next_mask = (lv_add_result & lv_state_mask);
-              if (((lv_add_result & lv_match_bit) != 0)) {
-                lv_matched = 1;
-              }
-            }
-          } else
-          if ((lv_op == 2)) {
-            lv_add_result = sp_nr_core_add_state(sp_nr_core_arg1(lv_pc), lv_next_mask);
-            lv_next_mask = (lv_add_result & lv_state_mask);
-            if (((lv_add_result & lv_match_bit) != 0)) {
+          if (((lv_op == 2) || ((lv_op == 1) && (lv_codepoint == sp_nr_core_arg1(lv_pc))))) {
+            lv_next_mask = (lv_next_mask | sp_nr_core_closure_mask(lv_pc));
+            if ((sp_nr_core_closure_match(lv_pc) != 0)) {
               lv_matched = 1;
             }
           }
@@ -240,6 +242,115 @@ static mrb_int sp_nr_proof_read_field(mrb_int lv_field_index) {
   return 0;
 }
 
+static mrb_int sp_nr_proof_write_meta(mrb_int lv_buffer, mrb_int lv_pc, mrb_int lv_value) {
+    mrb_int lv_offset = 0;
+    lv_offset = (lv_pc * 4);
+    return 0;
+  return 0;
+}
+
+static mrb_int sp_nr_proof_read_meta(mrb_int lv_buffer, mrb_int lv_pc) {
+    mrb_int lv_offset = 0;
+    mrb_int lv_b0 = 0;
+    mrb_int lv_b1 = 0;
+    mrb_int lv_b2 = 0;
+    mrb_int lv_b3 = 0;
+    lv_offset = (lv_pc * 4);
+    lv_b0 = 0;
+    lv_b1 = 0;
+    lv_b2 = 0;
+    lv_b3 = 0;
+    return (((lv_b0 | (lv_b1 << 8)) | (lv_b2 << 16)) | (lv_b3 << 24));
+  return 0;
+}
+
+static mrb_int sp_nr_proof_compute_closure(mrb_int lv_start_pc) {
+    mrb_int lv_stack0 = 0;
+    mrb_int lv_stack1 = 0;
+    mrb_int lv_stack_top = 0;
+    mrb_int lv_visited = 0;
+    mrb_int lv_state_mask = 0;
+    mrb_int lv_matched = 0;
+    mrb_int lv_cur = 0;
+    mrb_int lv_bit = 0;
+    mrb_int lv_op = 0;
+    lv_stack0 = lv_start_pc;
+    lv_stack1 = 0;
+    lv_stack_top = 1;
+    lv_visited = 0;
+    lv_state_mask = 0;
+    lv_matched = 0;
+    while ((lv_stack_top > 0)) {
+      lv_stack_top = (lv_stack_top - 1);
+      if ((lv_stack_top == 0)) {
+        lv_cur = lv_stack0;
+      } else {
+        lv_cur = lv_stack1;
+      }
+      lv_bit = (1 << lv_cur);
+      if (((lv_visited & lv_bit) != 0)) {
+        continue;
+      }
+      lv_visited = (lv_visited | lv_bit);
+      lv_op = sp_nr_core_op(lv_cur);
+      if ((lv_op == 3)) {
+        if ((lv_stack_top == 0)) {
+          lv_stack0 = sp_nr_core_arg1(lv_cur);
+        } else {
+          lv_stack1 = sp_nr_core_arg1(lv_cur);
+        }
+        lv_stack_top = (lv_stack_top + 1);
+      } else
+      if ((lv_op == 4)) {
+        if ((lv_stack_top == 0)) {
+          lv_stack0 = sp_nr_core_arg1(lv_cur);
+        } else {
+          lv_stack1 = sp_nr_core_arg1(lv_cur);
+        }
+        lv_stack_top = (lv_stack_top + 1);
+        if ((lv_stack_top == 0)) {
+          lv_stack0 = sp_nr_core_arg2(lv_cur);
+        } else {
+          lv_stack1 = sp_nr_core_arg2(lv_cur);
+        }
+        lv_stack_top = (lv_stack_top + 1);
+      } else
+      if ((lv_op == 5)) {
+        lv_matched = 1;
+      } else {
+        lv_state_mask = (lv_state_mask | lv_bit);
+      }
+    }
+    gv_nr_proof_ret_mask = lv_state_mask;
+    gv_nr_proof_ret_match = lv_matched;
+    return 0;
+  return 0;
+}
+
+static inline mrb_int sp_nr_proof_compile_closures(void) {
+    mrb_int lv_pc = 0;
+    mrb_int lv_op = 0;
+    lv_pc = 0;
+    while ((lv_pc < gv_nr_proof_insn_count)) {
+      sp_nr_proof_write_meta(gv_nr_proof_closure_masks, lv_pc, 0);
+      sp_nr_proof_write_meta(gv_nr_proof_closure_matches, lv_pc, 0);
+      lv_op = sp_nr_core_op(lv_pc);
+      if ((lv_op == 1)) {
+        sp_nr_proof_compute_closure(sp_nr_core_arg2(lv_pc));
+        sp_nr_proof_write_meta(gv_nr_proof_closure_masks, lv_pc, gv_nr_proof_ret_mask);
+        sp_nr_proof_write_meta(gv_nr_proof_closure_matches, lv_pc, gv_nr_proof_ret_match);
+      } else
+      if ((lv_op == 2)) {
+        sp_nr_proof_compute_closure(sp_nr_core_arg1(lv_pc));
+        sp_nr_proof_write_meta(gv_nr_proof_closure_masks, lv_pc, gv_nr_proof_ret_mask);
+        sp_nr_proof_write_meta(gv_nr_proof_closure_matches, lv_pc, gv_nr_proof_ret_match);
+      }
+      lv_pc += 1;
+    }
+    return 0;
+  return 0;
+}
+
 static mrb_int sp_nr_proof_decode_code(const char * lv_code_csv) {
     mrb_int lv_pos = 0;
     mrb_int lv_field_index = 0;
@@ -270,6 +381,7 @@ static mrb_int sp_nr_proof_decode_code(const char * lv_code_csv) {
       lv_field_index = (lv_field_index + 1);
     }
     gv_nr_proof_insn_count = sp_idiv(lv_field_index, 3);
+    sp_nr_proof_compile_closures();
     return 0;
   return 0;
 }
@@ -286,6 +398,16 @@ static inline mrb_int sp_nr_core_arg1(mrb_int lv_pc) {
 
 static inline mrb_int sp_nr_core_arg2(mrb_int lv_pc) {
     return sp_nr_proof_read_field(((lv_pc * 3) + 2));
+  return 0;
+}
+
+static inline mrb_int sp_nr_core_closure_mask(mrb_int lv_pc) {
+    return sp_nr_proof_read_meta(gv_nr_proof_closure_masks, lv_pc);
+  return 0;
+}
+
+static inline mrb_int sp_nr_core_closure_match(mrb_int lv_pc) {
+    return sp_nr_proof_read_meta(gv_nr_proof_closure_matches, lv_pc);
   return 0;
 }
 
@@ -316,9 +438,15 @@ int main(int argc,char**argv){
     cst_NR_PROOF_MAX_INSNS = 64;
     cst_NR_PROOF_SLOT_SIZE = 12;
     cst_NR_PROOF_BUFFER_SIZE = (64 * 12);
+    cst_NR_PROOF_META_SLOT_SIZE = 4;
+    cst_NR_PROOF_META_BUFFER_SIZE = (64 * 4);
 
     gv_nr_proof_code = sp_str_repeat(("\xff" "" + 1), cst_NR_PROOF_BUFFER_SIZE);
     gv_nr_proof_insn_count = 0;
+    gv_nr_proof_closure_masks = sp_str_repeat(("\xff" " " + 1), cst_NR_PROOF_META_BUFFER_SIZE);
+    gv_nr_proof_closure_matches = sp_str_repeat(("\xff" " " + 1), cst_NR_PROOF_META_BUFFER_SIZE);
+    gv_nr_proof_ret_mask = 0;
+    gv_nr_proof_ret_match = 0;
     if ((sp_argv.len < 2)) {
       fprintf(stderr, "%s\n", ("\xff" "usage: ruby bin/proof_vm_argv.rb OPCODE_CSV INPUT [START_POS]" + 1));
       exit(1);

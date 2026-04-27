@@ -65,6 +65,11 @@ module SpinelExtensionTest
     nr_match(code, input, start_pos, current_states, next_states, mark_tokens, epsilon_stack, mark_token_box)
   end
 
+  def spinel_match_code?(code, input, start_pos)
+    tables = Regexpinel.compile_closure_tables(code)
+    Regexpinel::Spinel.match_code?(code, tables[0], tables[1], input, start_pos)
+  end
+
   def main
     unless Regexpinel::Spinel.available?
       raise "spinel extension is not available"
@@ -73,7 +78,7 @@ module SpinelExtensionTest
     CASES.each do |pattern, input, start_pos|
       code = Regexpinel.compile(pattern)
       expected = ruby_match?(code, input, start_pos)
-      actual = Regexpinel::Spinel.match_code?(code, input, start_pos)
+      actual = spinel_match_code?(code, input, start_pos)
       assert_eq(actual, expected, "spinel #{pattern.inspect} on #{input.inspect} at #{start_pos}")
 
       spinel_pattern = Regexpinel::Spinel::Pattern.compile(pattern)
@@ -105,13 +110,13 @@ module SpinelExtensionTest
     end
 
     begin
-      Regexpinel::Spinel.match_code?([NR_OP_CHAR, "a".ord], "a", 0)
+      Regexpinel::Spinel.match_code?([NR_OP_CHAR, "a".ord], [], [], "a", 0)
       raise "expected invalid instruction length to fail"
     rescue ArgumentError
     end
 
     1_000.times do
-      Regexpinel::Spinel.match_code?(Regexpinel.compile("a(b|c)d"), "acd", 0)
+      spinel_match_code?(Regexpinel.compile("a(b|c)d"), "acd", 0)
       Regexpinel::Spinel.new("a(b|c)d").match?("acd", 0)
     end
     GC.start

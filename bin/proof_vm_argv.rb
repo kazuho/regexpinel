@@ -5,9 +5,15 @@ require_relative "../lib/regexpinel/core"
 NR_PROOF_MAX_INSNS = 64
 NR_PROOF_SLOT_SIZE = 12
 NR_PROOF_BUFFER_SIZE = NR_PROOF_MAX_INSNS * NR_PROOF_SLOT_SIZE
+NR_PROOF_META_SLOT_SIZE = 4
+NR_PROOF_META_BUFFER_SIZE = NR_PROOF_MAX_INSNS * NR_PROOF_META_SLOT_SIZE
 
 $nr_proof_code = "\1" * NR_PROOF_BUFFER_SIZE
 $nr_proof_insn_count = 0
+$nr_proof_closure_masks = "\0" * NR_PROOF_META_BUFFER_SIZE
+$nr_proof_closure_matches = "\0" * NR_PROOF_META_BUFFER_SIZE
+$nr_proof_ret_mask = 0
+$nr_proof_ret_match = 0
 
 def nr_on_match(start_pos, end_pos, capture_count)
   print "match,"
@@ -45,6 +51,102 @@ def nr_proof_read_field(field_index)
   b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
 end
 
+def nr_proof_write_meta(buffer, pc, value)
+  offset = pc * NR_PROOF_META_SLOT_SIZE
+  buffer.setbyte(offset, value & 255)
+  buffer.setbyte(offset + 1, (value >> 8) & 255)
+  buffer.setbyte(offset + 2, (value >> 16) & 255)
+  buffer.setbyte(offset + 3, (value >> 24) & 255)
+  0
+end
+
+def nr_proof_read_meta(buffer, pc)
+  offset = pc * NR_PROOF_META_SLOT_SIZE
+  b0 = buffer.getbyte(offset)
+  b1 = buffer.getbyte(offset + 1)
+  b2 = buffer.getbyte(offset + 2)
+  b3 = buffer.getbyte(offset + 3)
+  b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
+end
+
+def nr_proof_compute_closure(start_pc)
+  stack0 = start_pc
+  stack1 = 0
+  stack_top = 1
+  visited = 0
+  state_mask = 0
+  matched = 0
+
+  while stack_top > 0
+    stack_top = stack_top - 1
+    if stack_top == 0
+      cur = stack0
+    else
+      cur = stack1
+    end
+
+    bit = 1 << cur
+    if (visited & bit) != 0
+      next
+    end
+    visited = visited | bit
+
+    op = nr_core_op(cur)
+    if op == NR_OP_JMP
+      if stack_top == 0
+        stack0 = nr_core_arg1(cur)
+      else
+        stack1 = nr_core_arg1(cur)
+      end
+      stack_top = stack_top + 1
+    elsif op == NR_OP_SPLIT
+      if stack_top == 0
+        stack0 = nr_core_arg1(cur)
+      else
+        stack1 = nr_core_arg1(cur)
+      end
+      stack_top = stack_top + 1
+
+      if stack_top == 0
+        stack0 = nr_core_arg2(cur)
+      else
+        stack1 = nr_core_arg2(cur)
+      end
+      stack_top = stack_top + 1
+    elsif op == NR_OP_MATCH
+      matched = 1
+    else
+      state_mask = state_mask | bit
+    end
+  end
+
+  $nr_proof_ret_mask = state_mask
+  $nr_proof_ret_match = matched
+  0
+end
+
+def nr_proof_compile_closures
+  pc = 0
+  while pc < $nr_proof_insn_count
+    nr_proof_write_meta($nr_proof_closure_masks, pc, 0)
+    nr_proof_write_meta($nr_proof_closure_matches, pc, 0)
+
+    op = nr_core_op(pc)
+    if op == NR_OP_CHAR
+      nr_proof_compute_closure(nr_core_arg2(pc))
+      nr_proof_write_meta($nr_proof_closure_masks, pc, $nr_proof_ret_mask)
+      nr_proof_write_meta($nr_proof_closure_matches, pc, $nr_proof_ret_match)
+    elsif op == NR_OP_ANY
+      nr_proof_compute_closure(nr_core_arg1(pc))
+      nr_proof_write_meta($nr_proof_closure_masks, pc, $nr_proof_ret_mask)
+      nr_proof_write_meta($nr_proof_closure_matches, pc, $nr_proof_ret_match)
+    end
+
+    pc += 1
+  end
+  0
+end
+
 def nr_proof_decode_code(code_csv)
   pos = 0
   field_index = 0
@@ -71,6 +173,7 @@ def nr_proof_decode_code(code_csv)
   end
 
   $nr_proof_insn_count = field_index / 3
+  nr_proof_compile_closures
   0
 end
 
@@ -84,6 +187,14 @@ end
 
 def nr_core_arg2(pc)
   nr_proof_read_field(pc * 3 + 2)
+end
+
+def nr_core_closure_mask(pc)
+  nr_proof_read_meta($nr_proof_closure_masks, pc)
+end
+
+def nr_core_closure_match(pc)
+  nr_proof_read_meta($nr_proof_closure_matches, pc)
 end
 
 def nr_poc_run(code_csv, input, start_pos)

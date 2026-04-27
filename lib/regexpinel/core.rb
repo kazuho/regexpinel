@@ -102,18 +102,9 @@ def nr_core_match(input, input_len, start_pos)
       bit = 1 << pc
       if (current_mask & bit) != 0
         op = nr_core_op(pc)
-        if op == NR_OP_CHAR
-          if codepoint == nr_core_arg1(pc)
-            add_result = nr_core_add_state(nr_core_arg2(pc), next_mask)
-            next_mask = add_result & state_mask
-            if (add_result & match_bit) != 0
-              matched = 1
-            end
-          end
-        elsif op == NR_OP_ANY
-          add_result = nr_core_add_state(nr_core_arg1(pc), next_mask)
-          next_mask = add_result & state_mask
-          if (add_result & match_bit) != 0
+        if op == NR_OP_ANY || (op == NR_OP_CHAR && codepoint == nr_core_arg1(pc))
+          next_mask = next_mask | nr_core_closure_mask(pc)
+          if nr_core_closure_match(pc) != 0
             matched = 1
           end
         end

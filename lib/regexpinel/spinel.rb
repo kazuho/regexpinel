@@ -27,7 +27,9 @@ else
 
       class Pattern
         def self.compile(pattern)
-          new(Regexpinel.compile(pattern))
+          code = Regexpinel.compile(pattern)
+          tables = Regexpinel.compile_closure_tables(code)
+          new(code, tables[0], tables[1])
         end
       end
 

@@ -57,6 +57,8 @@ replace_exact!(
     typedef int (*nr_on_match_callback)(void *data, size_t start_pos, size_t end_pos, size_t capture_count);
 
     static const int32_t *nr_raw_code = NULL;
+    static const int64_t *nr_raw_closure_masks = NULL;
+    static const int64_t *nr_raw_closure_matches = NULL;
     static size_t nr_raw_insn_count = 0;
     static nr_on_match_callback nr_raw_on_match = NULL;
     static void *nr_raw_on_match_data = NULL;
@@ -86,6 +88,9 @@ remove_block!(
   /static inline mrb_int sp_nr_core_op\(mrb_int lv_pc\) \{/,
   "proof bytecode decoder block"
 )
+source.gsub!(/^.*sp_nr_proof_.*\n/, "")
+source.gsub!(/^.*gv_nr_proof_.*\n/, "")
+source.gsub!(/^.*cst_NR_PROOF_.*\n/, "")
 
 replace_function!(
   source,
@@ -135,6 +140,30 @@ replace_function!(
   "arg2 accessor"
 )
 
+replace_function!(
+  source,
+  /static inline mrb_int sp_nr_core_closure_mask\(mrb_int lv_pc\)/,
+  <<~C.chomp,
+    static inline mrb_int sp_nr_core_closure_mask(mrb_int lv_pc) {
+        return (mrb_int)nr_raw_closure_masks[lv_pc];
+      return 0;
+    }
+  C
+  "closure mask accessor"
+)
+
+replace_function!(
+  source,
+  /static inline mrb_int sp_nr_core_closure_match\(mrb_int lv_pc\)/,
+  <<~C.chomp,
+    static inline mrb_int sp_nr_core_closure_match(mrb_int lv_pc) {
+        return (mrb_int)nr_raw_closure_matches[lv_pc];
+      return 0;
+    }
+  C
+  "closure match accessor"
+)
+
 # Boundary 3: matches are reported through the extension callback.
 replace_function!(
   source,
@@ -170,6 +199,8 @@ entrypoint = <<~C
 
   bool nr_match_core(
       const int32_t *code,
+      const int64_t *closure_masks,
+      const int64_t *closure_matches,
       size_t insn_count,
       const uint8_t *input,
       size_t input_len,
@@ -178,6 +209,8 @@ entrypoint = <<~C
       void *on_match_data)
   {
       nr_raw_code = code;
+      nr_raw_closure_masks = closure_masks;
+      nr_raw_closure_matches = closure_matches;
       nr_raw_insn_count = insn_count;
       nr_raw_on_match = on_match;
       nr_raw_on_match_data = on_match_data;

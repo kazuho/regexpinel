@@ -16,6 +16,8 @@ typedef mrb_int sp_sym;
 typedef int (*nr_on_match_callback)(void *data, size_t start_pos, size_t end_pos, size_t capture_count);
 
 static const int32_t *nr_raw_code = NULL;
+static const int64_t *nr_raw_closure_masks = NULL;
+static const int64_t *nr_raw_closure_matches = NULL;
 static size_t nr_raw_insn_count = 0;
 static nr_on_match_callback nr_raw_on_match = NULL;
 static void *nr_raw_on_match_data = NULL;
@@ -34,6 +36,8 @@ static inline mrb_int sp_nr_core_insn_count(void);
 static inline mrb_int sp_nr_core_op(mrb_int lv_pc);
 static inline mrb_int sp_nr_core_arg1(mrb_int lv_pc);
 static inline mrb_int sp_nr_core_arg2(mrb_int lv_pc);
+static inline mrb_int sp_nr_core_closure_mask(mrb_int lv_pc);
+static inline mrb_int sp_nr_core_closure_match(mrb_int lv_pc);
 
 
 static mrb_int cst_NR_OP_CHAR = 0;
@@ -165,19 +169,9 @@ static mrb_bool sp_nr_core_match(const char * lv_input, mrb_int lv_input_len, mr
         lv_bit = (1 << lv_pc);
         if (((lv_current_mask & lv_bit) != 0)) {
           lv_op = sp_nr_core_op(lv_pc);
-          if ((lv_op == 1)) {
-            if ((lv_codepoint == sp_nr_core_arg1(lv_pc))) {
-              lv_add_result = sp_nr_core_add_state(sp_nr_core_arg2(lv_pc), lv_next_mask);
-              lv_next_mask = (lv_add_result & lv_state_mask);
-              if (((lv_add_result & lv_match_bit) != 0)) {
-                lv_matched = 1;
-              }
-            }
-          } else
-          if ((lv_op == 2)) {
-            lv_add_result = sp_nr_core_add_state(sp_nr_core_arg1(lv_pc), lv_next_mask);
-            lv_next_mask = (lv_add_result & lv_state_mask);
-            if (((lv_add_result & lv_match_bit) != 0)) {
+          if (((lv_op == 2) || ((lv_op == 1) && (lv_codepoint == sp_nr_core_arg1(lv_pc))))) {
+            lv_next_mask = (lv_next_mask | sp_nr_core_closure_mask(lv_pc));
+            if ((sp_nr_core_closure_match(lv_pc) != 0)) {
               lv_matched = 1;
             }
           }
@@ -231,8 +225,20 @@ static inline mrb_int sp_nr_core_arg2(mrb_int lv_pc) {
   return 0;
 }
 
+static inline mrb_int sp_nr_core_closure_mask(mrb_int lv_pc) {
+    return (mrb_int)nr_raw_closure_masks[lv_pc];
+  return 0;
+}
+
+static inline mrb_int sp_nr_core_closure_match(mrb_int lv_pc) {
+    return (mrb_int)nr_raw_closure_matches[lv_pc];
+  return 0;
+}
+
 bool nr_match_core(
     const int32_t *code,
+    const int64_t *closure_masks,
+    const int64_t *closure_matches,
     size_t insn_count,
     const uint8_t *input,
     size_t input_len,
@@ -241,6 +247,8 @@ bool nr_match_core(
     void *on_match_data)
 {
     nr_raw_code = code;
+    nr_raw_closure_masks = closure_masks;
+    nr_raw_closure_matches = closure_matches;
     nr_raw_insn_count = insn_count;
     nr_raw_on_match = on_match;
     nr_raw_on_match_data = on_match_data;

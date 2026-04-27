@@ -106,8 +106,8 @@ on this machine with `loops=50` produced:
 
 | Case | Pattern | CRuby MiB/Sec | `Regexpinel::Spinel` MiB/Sec | `Regexpinel::CRuby` MiB/Sec |
 | --- | --- | ---: | ---: | ---: |
-| long star literal match | `z*ab` | 375.0 | 193.6 | 1.2 |
-| long star literal miss | `z*ab` | 4,624.2 | 176.0 | 1.2 |
-| long plus match | `a+b` | 418.0 | 210.0 | 1.3 |
-| long plus miss | `a+b` | 406.0 | 216.9 | 1.3 |
-| long UTF-8 match | `é*x` | 388.9 | 389.3 | 2.4 |
+| long star literal match | `z*ab` | 362.2 | 349.3 | 1.0 |
+| long star literal miss | `z*ab` | 3,918.6 | 345.1 | 1.0 |
+| long plus match | `a+b` | 417.0 | 439.6 | 1.1 |
+| long plus miss | `a+b` | 413.7 | 415.3 | 1.1 |
+| long UTF-8 match | `é*x` | 387.8 | 668.6 | 2.1 |

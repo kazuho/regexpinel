@@ -62,6 +62,14 @@ static const int32_t nr_code[] = {
     5, 0, 0
 };
 
+static const int64_t nr_closure_masks[] = {
+    6, 16, 16, 0, 0, 0
+};
+
+static const int64_t nr_closure_matches[] = {
+    0, 0, 0, 0, 1, 0
+};
+
 static int
 nr_harness_on_match(void *data, size_t start_pos, size_t end_pos, size_t capture_count)
 {
@@ -74,6 +82,8 @@ static int nr_run_once(const char *input, size_t start_pos)
 {
     return nr_match_core(
         nr_code,
+        nr_closure_masks,
+        nr_closure_matches,
         sizeof(nr_code) / sizeof(nr_code[0]) / 3,
         (const uint8_t *)input,
         strlen(input),

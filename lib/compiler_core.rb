@@ -19,7 +19,7 @@ def nr_compile(pattern)
   $nr_ret_outs.pop
 
   nr_parse_expression
-  if $nr_pos != $nr_pattern.length
+  if $nr_pos != $nr_pattern.bytesize
     raise "unexpected character at #{$nr_pos}"
   end
 
@@ -223,11 +223,43 @@ def nr_more_term?
 end
 
 def nr_peek
-  return NR_EOF if $nr_pos >= $nr_pattern.length
-  $nr_pattern.getbyte($nr_pos)
+  return NR_EOF if $nr_pos >= $nr_pattern.bytesize
+  nr_pattern_codepoint($nr_pos)
 end
 
 def nr_advance
-  $nr_pos = $nr_pos + 1
+  b0 = $nr_pattern.getbyte($nr_pos)
+  if b0 < 128
+    $nr_pos = $nr_pos + 1
+  elsif b0 < 224
+    $nr_pos = $nr_pos + 2
+  elsif b0 < 240
+    $nr_pos = $nr_pos + 3
+  else
+    $nr_pos = $nr_pos + 4
+  end
   0
+end
+
+def nr_pattern_codepoint(pos)
+  b0 = $nr_pattern.getbyte(pos)
+  if b0 < 128
+    return b0
+  end
+
+  if b0 < 224
+    b1 = $nr_pattern.getbyte(pos + 1)
+    return ((b0 & 31) << 6) | (b1 & 63)
+  end
+
+  if b0 < 240
+    b1 = $nr_pattern.getbyte(pos + 1)
+    b2 = $nr_pattern.getbyte(pos + 2)
+    return ((b0 & 15) << 12) | ((b1 & 63) << 6) | (b2 & 63)
+  end
+
+  b1 = $nr_pattern.getbyte(pos + 1)
+  b2 = $nr_pattern.getbyte(pos + 2)
+  b3 = $nr_pattern.getbyte(pos + 3)
+  ((b0 & 7) << 18) | ((b1 & 63) << 12) | ((b2 & 63) << 6) | (b3 & 63)
 end

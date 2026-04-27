@@ -62,7 +62,7 @@ def nr_core_add_state(pc, state_mask)
   state_mask
 end
 
-def nr_core_match(input, start_pos)
+def nr_core_match(input, input_len, start_pos)
   match_bit = 1 << nr_core_insn_count
   state_mask = match_bit - 1
   add_result = nr_core_add_state(0, 0)
@@ -73,8 +73,28 @@ def nr_core_match(input, start_pos)
   end
 
   pos = start_pos
-  while pos < input.length
-    byte = input.getbyte(pos)
+  while pos < input_len
+    b0 = input.getbyte(pos)
+    if b0 < 128
+      codepoint = b0
+      next_pos = pos + 1
+    elsif b0 < 224
+      b1 = input.getbyte(pos + 1)
+      codepoint = ((b0 & 31) << 6) | (b1 & 63)
+      next_pos = pos + 2
+    elsif b0 < 240
+      b1 = input.getbyte(pos + 1)
+      b2 = input.getbyte(pos + 2)
+      codepoint = ((b0 & 15) << 12) | ((b1 & 63) << 6) | (b2 & 63)
+      next_pos = pos + 3
+    else
+      b1 = input.getbyte(pos + 1)
+      b2 = input.getbyte(pos + 2)
+      b3 = input.getbyte(pos + 3)
+      codepoint = ((b0 & 7) << 18) | ((b1 & 63) << 12) | ((b2 & 63) << 6) | (b3 & 63)
+      next_pos = pos + 4
+    end
+
     next_mask = 0
     matched = 0
     pc = 0
@@ -83,7 +103,7 @@ def nr_core_match(input, start_pos)
       if (current_mask & bit) != 0
         op = nr_core_op(pc)
         if op == NR_OP_CHAR
-          if byte == nr_core_arg1(pc)
+          if codepoint == nr_core_arg1(pc)
             add_result = nr_core_add_state(nr_core_arg2(pc), next_mask)
             next_mask = add_result & state_mask
             if (add_result & match_bit) != 0
@@ -102,14 +122,14 @@ def nr_core_match(input, start_pos)
     end
 
     if matched != 0
-      nr_on_match(start_pos, pos + 1, 0)
+      nr_on_match(start_pos, next_pos, 0)
       return true
     end
     if next_mask == 0
       return false
     end
     current_mask = next_mask
-    pos = pos + 1
+    pos = next_pos
   end
 
   false

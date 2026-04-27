@@ -18,6 +18,30 @@ typedef struct {
 
 static VALUE cSpinelPattern;
 
+static size_t
+nr_native_utf8_advance(VALUE rb_input, size_t pos)
+{
+    const uint8_t *input = (const uint8_t *)RSTRING_PTR(rb_input);
+    size_t input_len = (size_t)RSTRING_LEN(rb_input);
+    uint8_t b0;
+
+    if (pos >= input_len) {
+        return pos;
+    }
+
+    b0 = input[pos];
+    if (b0 < 0x80) {
+        return pos + 1;
+    }
+    if (b0 < 0xe0) {
+        return pos + 2;
+    }
+    if (b0 < 0xf0) {
+        return pos + 3;
+    }
+    return pos + 4;
+}
+
 static int
 nr_native_noop_on_match(void *data, size_t start_pos, size_t end_pos, size_t capture_count)
 {
@@ -149,7 +173,10 @@ nr_native_pattern_find_range(nr_native_pattern_t *pattern, VALUE rb_input, size_
         if (nr_native_pattern_match_range(pattern, rb_input, pos, range)) {
             return true;
         }
-        ++pos;
+        if (pos >= input_len) {
+            break;
+        }
+        pos = nr_native_utf8_advance(rb_input, pos);
     }
 
     return false;
@@ -244,8 +271,8 @@ nr_native_pattern_gsub(VALUE self, VALUE rb_input, VALUE rb_replacement)
                 copy_pos = range.end_pos;
                 break;
             }
-            rb_str_cat(result, RSTRING_PTR(rb_input) + range.end_pos, 1);
-            search_pos = range.end_pos + 1;
+            search_pos = nr_native_utf8_advance(rb_input, range.end_pos);
+            rb_str_cat(result, RSTRING_PTR(rb_input) + range.end_pos, search_pos - range.end_pos);
             copy_pos = search_pos;
         } else {
             search_pos = range.end_pos;

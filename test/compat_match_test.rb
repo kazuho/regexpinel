@@ -25,7 +25,10 @@ module CompatMatchTest
     ["ab?", "ab", 0],
     [".b", "ab", 0],
     [".b", "zz", 0],
-    ["a(b|c)d", "acd", 0]
+    ["a(b|c)d", "acd", 0],
+    ["é.", "éx", 0],
+    [".x", "éx", 0],
+    ["é|ø", "ø", 0]
   ]
 
   module_function

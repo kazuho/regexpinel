@@ -7,8 +7,8 @@ this repository.
 
 The current bytecode subset supports:
 
-- literal byte match
-- wildcard byte match
+- literal UTF-8 codepoint match
+- wildcard UTF-8 codepoint match
 - jump
 - split
 - match
@@ -22,7 +22,6 @@ Not supported yet:
 - backreferences
 - anchors
 - character classes
-- Unicode-aware matching
 - replacement APIs
 
 ## 0A. Contract Lock
@@ -57,8 +56,8 @@ nr_on_match(start_pos, end_pos, capture_count)
 
 Arguments:
 
-- `start_pos`: integer input offset where the accepted match began
-- `end_pos`: integer input offset just past the accepted match
+- `start_pos`: byte offset where the accepted match began
+- `end_pos`: byte offset just past the accepted match
 - `capture_count`: integer count of captures reported by this VM run
 
 For the current bytecode subset:
@@ -109,10 +108,10 @@ arg2 = code[base + 2]
 ### `NR_OP_CHAR`
 
 ```text
-[NR_OP_CHAR, byte_value, next_pc]
+[NR_OP_CHAR, codepoint_value, next_pc]
 ```
 
-Consumes one input byte if it equals `byte_value`.
+Consumes one UTF-8 codepoint if it equals `codepoint_value`.
 
 ### `NR_OP_ANY`
 
@@ -120,7 +119,7 @@ Consumes one input byte if it equals `byte_value`.
 [NR_OP_ANY, next_pc, 0]
 ```
 
-Consumes one input byte if available.
+Consumes one UTF-8 codepoint if available.
 
 ### `NR_OP_JMP`
 
@@ -177,13 +176,18 @@ The executor must not allocate replacement arrays during execution.
 
 ## Input model
 
-The current bytecode subset matches raw string bytes using:
+Strings are byte sequences, and all positions reported to callers are byte
+offsets. The executor assumes valid UTF-8 and decodes one codepoint at a time
+for matching. The core VM receives both the input byte buffer and its byte
+length:
 
 ```ruby
-string.getbyte(pos)
+nr_core_match(input, input.bytesize, start_pos)
 ```
 
-No multibyte character semantics are defined yet.
+`NR_OP_CHAR` compares codepoints. `NR_OP_ANY` consumes one decoded codepoint.
+Substitution wrappers splice byte ranges, so callback offsets must remain aligned
+to UTF-8 codepoint boundaries.
 
 ## Allocation rules
 

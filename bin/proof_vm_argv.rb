@@ -88,7 +88,7 @@ end
 
 def nr_poc_run(code_csv, input, start_pos)
   nr_proof_decode_code(code_csv)
-  matched = nr_core_match(input, start_pos)
+  matched = nr_core_match(input, input.bytesize, start_pos)
   if matched
     puts "status,1"
   else

@@ -64,8 +64,8 @@ module Regexpinel
 
         if end_pos == start_pos
           break if end_pos >= string.bytesize
-          result << string.byteslice(end_pos, 1).to_s
-          search_pos = end_pos + 1
+          search_pos = utf8_next_pos(string, end_pos)
+          result << string.byteslice(end_pos, search_pos - end_pos).to_s
           copy_pos = search_pos
         else
           search_pos = end_pos
@@ -89,9 +89,18 @@ module Regexpinel
         if nr_run_with_context(@code, string, pos, @context)
           return [Regexpinel.last_match_start, Regexpinel.last_match_end]
         end
-        pos += 1
+        break if pos >= string.bytesize
+        pos = utf8_next_pos(string, pos)
       end
       nil
+    end
+
+    def utf8_next_pos(string, pos)
+      b0 = string.getbyte(pos)
+      return pos + 1 if b0 < 128
+      return pos + 2 if b0 < 224
+      return pos + 3 if b0 < 240
+      pos + 4
     end
 
     def replace_range(string, start_pos, end_pos, replacement)

@@ -75,6 +75,14 @@ module ExecutorTest
     ]
   end
 
+  def prog_e_acute_any
+    [
+      OP_CHAR, "é".ord, 1,
+      OP_ANY, 2, 0,
+      OP_MATCH, 0, 0
+    ]
+  end
+
   def main
     assert_eq(run_match(prog_ab, "ab"), true, "ab matches ab")
     assert_eq($nr_last_start, 0, "ab callback start")
@@ -95,6 +103,11 @@ module ExecutorTest
     assert_eq(run_match(prog_any_b, "ab"), true, ".b matches ab")
     assert_eq(run_match(prog_any_b, "zb"), true, ".b matches zb")
     assert_eq(run_match(prog_any_b, "zz"), false, ".b rejects zz")
+
+    assert_eq(run_match(prog_e_acute_any, "éx"), true, "UTF-8 literal and dot match")
+    assert_eq($nr_last_start, 0, "UTF-8 callback start")
+    assert_eq($nr_last_end, 3, "UTF-8 callback end is byte offset")
+    assert_eq(run_match(prog_e_acute_any, "éx"), false, "UTF-8 literal rejects decomposed input")
 
     puts "ok"
   end

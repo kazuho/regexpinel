@@ -43,6 +43,16 @@ module CompilerTest
       ],
       "compile a*"
     )
+
+    assert_eq(
+      Regexpinel.compile("é."),
+      [
+        NR_OP_CHAR, "é".ord, 1,
+        NR_OP_ANY, 2, 0,
+        NR_OP_MATCH, 0, 0
+      ],
+      "compile UTF-8 codepoint and dot"
+    )
   end
 
   def main

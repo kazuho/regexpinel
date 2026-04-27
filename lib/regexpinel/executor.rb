@@ -16,18 +16,20 @@ module Regexpinel
       return true if ctx.matched
 
       pos = start_pos
-      while pos < string.length
-        byte = string.getbyte(pos)
-        step(code, byte, ctx)
+      while pos < string.bytesize
+        decoded = decode_utf8(string, pos)
+        codepoint = decoded[0]
+        next_pos = decoded[1]
+        step(code, codepoint, ctx)
         return true if ctx.matched
         return false if ctx.current_count == 0
-        pos += 1
+        pos = next_pos
       end
 
       false
     end
 
-    def step(code, byte, ctx)
+    def step(code, codepoint, ctx)
       ctx.advance_mark_token
       i = 0
       while i < ctx.current_count
@@ -35,7 +37,7 @@ module Regexpinel
         base = pc * 3
         op = code[base]
         if op == OP_CHAR
-          if byte == code[base + 1]
+          if codepoint == code[base + 1]
             add_next_state(code, code[base + 2], ctx)
           end
         elsif op == OP_ANY
@@ -44,6 +46,26 @@ module Regexpinel
         i += 1
       end
       ctx.swap_sets
+    end
+
+    def decode_utf8(string, pos)
+      b0 = string.getbyte(pos)
+      if b0 < 128
+        return [b0, pos + 1]
+      end
+      if b0 < 224
+        b1 = string.getbyte(pos + 1)
+        return [((b0 & 31) << 6) | (b1 & 63), pos + 2]
+      end
+      if b0 < 240
+        b1 = string.getbyte(pos + 1)
+        b2 = string.getbyte(pos + 2)
+        return [((b0 & 15) << 12) | ((b1 & 63) << 6) | (b2 & 63), pos + 3]
+      end
+      b1 = string.getbyte(pos + 1)
+      b2 = string.getbyte(pos + 2)
+      b3 = string.getbyte(pos + 3)
+      [((b0 & 7) << 18) | ((b1 & 63) << 12) | ((b2 & 63) << 6) | (b3 & 63), pos + 4]
     end
 
     def add_current_state(code, pc, ctx)

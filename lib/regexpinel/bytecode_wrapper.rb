@@ -28,5 +28,5 @@ def nr_match(code, string, start_pos, current_states, next_states, mark_tokens, 
   string.length
   $nr_bytecode_code = code
   $nr_bytecode_insn_count = code.length / 3
-  nr_core_match(string, start_pos)
+  nr_core_match(string, string.bytesize, start_pos)
 end

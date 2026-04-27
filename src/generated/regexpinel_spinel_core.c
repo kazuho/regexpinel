@@ -17,7 +17,6 @@ typedef int (*nr_on_match_callback)(void *data, size_t start_pos, size_t end_pos
 
 static const int32_t *nr_raw_code = NULL;
 static size_t nr_raw_insn_count = 0;
-static size_t nr_raw_input_len = 0;
 static nr_on_match_callback nr_raw_on_match = NULL;
 static void *nr_raw_on_match_data = NULL;
 static const char *sp_sym_to_s(sp_sym id){(void)id;return "";}
@@ -25,7 +24,7 @@ static const char *sp_sym_to_s(sp_sym id){(void)id;return "";}
 
 
 static mrb_int sp_nr_core_add_state(mrb_int lv_pc, mrb_int lv_state_mask);
-static mrb_bool sp_nr_core_match(const char * lv_input, mrb_int lv_start_pos);
+static mrb_bool sp_nr_core_match(const char * lv_input, mrb_int lv_input_len, mrb_int lv_start_pos);
 static mrb_int sp_nr_on_match(mrb_int lv_start_pos, mrb_int lv_end_pos, mrb_int lv_capture_count);
 static inline mrb_int sp_nr_core_insn_count(void);
 
@@ -110,13 +109,18 @@ static mrb_int sp_nr_core_add_state(mrb_int lv_pc, mrb_int lv_state_mask) {
   return 0;
 }
 
-static mrb_bool sp_nr_core_match(const char * lv_input, mrb_int lv_start_pos) {
+static mrb_bool sp_nr_core_match(const char * lv_input, mrb_int lv_input_len, mrb_int lv_start_pos) {
     mrb_int lv_match_bit = 0;
     mrb_int lv_state_mask = 0;
     mrb_int lv_add_result = 0;
     mrb_int lv_current_mask = 0;
     mrb_int lv_pos = 0;
-    mrb_int lv_byte = 0;
+    mrb_int lv_b0 = 0;
+    mrb_int lv_codepoint = 0;
+    mrb_int lv_next_pos = 0;
+    mrb_int lv_b1 = 0;
+    mrb_int lv_b2 = 0;
+    mrb_int lv_b3 = 0;
     mrb_int lv_next_mask = 0;
     mrb_int lv_matched = 0;
     mrb_int lv_pc = 0;
@@ -131,9 +135,29 @@ static mrb_bool sp_nr_core_match(const char * lv_input, mrb_int lv_start_pos) {
       return TRUE;
     }
     lv_pos = lv_start_pos;
-    mrb_int _t1 = (mrb_int)nr_raw_input_len;
-    while ((lv_pos < _t1)) {
-      lv_byte = ((mrb_int)(unsigned char)(lv_input)[lv_pos]);
+    while ((lv_pos < lv_input_len)) {
+      lv_b0 = ((mrb_int)(unsigned char)(lv_input)[lv_pos]);
+      if ((lv_b0 < 128)) {
+        lv_codepoint = lv_b0;
+        lv_next_pos = (lv_pos + 1);
+      } else
+      if ((lv_b0 < 224)) {
+        lv_b1 = ((mrb_int)(unsigned char)(lv_input)[(lv_pos + 1)]);
+        lv_codepoint = (((lv_b0 & 31) << 6) | (lv_b1 & 63));
+        lv_next_pos = (lv_pos + 2);
+      } else
+      if ((lv_b0 < 240)) {
+        lv_b1 = ((mrb_int)(unsigned char)(lv_input)[(lv_pos + 1)]);
+        lv_b2 = ((mrb_int)(unsigned char)(lv_input)[(lv_pos + 2)]);
+        lv_codepoint = ((((lv_b0 & 15) << 12) | ((lv_b1 & 63) << 6)) | (lv_b2 & 63));
+        lv_next_pos = (lv_pos + 3);
+      } else {
+        lv_b1 = ((mrb_int)(unsigned char)(lv_input)[(lv_pos + 1)]);
+        lv_b2 = ((mrb_int)(unsigned char)(lv_input)[(lv_pos + 2)]);
+        lv_b3 = ((mrb_int)(unsigned char)(lv_input)[(lv_pos + 3)]);
+        lv_codepoint = (((((lv_b0 & 7) << 18) | ((lv_b1 & 63) << 12)) | ((lv_b2 & 63) << 6)) | (lv_b3 & 63));
+        lv_next_pos = (lv_pos + 4);
+      }
       lv_next_mask = 0;
       lv_matched = 0;
       lv_pc = 0;
@@ -142,7 +166,7 @@ static mrb_bool sp_nr_core_match(const char * lv_input, mrb_int lv_start_pos) {
         if (((lv_current_mask & lv_bit) != 0)) {
           lv_op = sp_nr_core_op(lv_pc);
           if ((lv_op == 1)) {
-            if ((lv_byte == sp_nr_core_arg1(lv_pc))) {
+            if ((lv_codepoint == sp_nr_core_arg1(lv_pc))) {
               lv_add_result = sp_nr_core_add_state(sp_nr_core_arg2(lv_pc), lv_next_mask);
               lv_next_mask = (lv_add_result & lv_state_mask);
               if (((lv_add_result & lv_match_bit) != 0)) {
@@ -161,14 +185,14 @@ static mrb_bool sp_nr_core_match(const char * lv_input, mrb_int lv_start_pos) {
         lv_pc = (lv_pc + 1);
       }
       if ((lv_matched != 0)) {
-        sp_nr_on_match(lv_start_pos, (lv_pos + 1), 0);
+        sp_nr_on_match(lv_start_pos, lv_next_pos, 0);
         return TRUE;
       }
       if ((lv_next_mask == 0)) {
         return FALSE;
       }
       lv_current_mask = lv_next_mask;
-      lv_pos = (lv_pos + 1);
+      lv_pos = lv_next_pos;
     }
     return FALSE;
   return FALSE;
@@ -218,9 +242,8 @@ bool nr_match_core(
 {
     nr_raw_code = code;
     nr_raw_insn_count = insn_count;
-    nr_raw_input_len = input_len;
     nr_raw_on_match = on_match;
     nr_raw_on_match_data = on_match_data;
 
-    return sp_nr_core_match((const char *)input, (mrb_int)start_pos);
+    return sp_nr_core_match((const char *)input, (mrb_int)input_len, (mrb_int)start_pos);
 }

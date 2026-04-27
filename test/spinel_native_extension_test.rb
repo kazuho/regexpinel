@@ -42,7 +42,10 @@ module SpinelExtensionTest
     ["ab?", "ab", 0],
     [".b", "ab", 0],
     [".b", "zz", 0],
-    ["a(b|c)d", "acd", 0]
+    ["a(b|c)d", "acd", 0],
+    ["é.", "éx", 0],
+    [".x", "éx", 0],
+    ["é|ø", "ø", 0]
   ].freeze
 
   module_function
@@ -88,7 +91,10 @@ module SpinelExtensionTest
       ["a|b", "cab", "X", "cXb", "cXX"],
       ["a+", "caaab", "X", "cXaab", "cXXXb"],
       [".b", "zab", "X", "zX", "zX"],
+      ["é.", "zéx", "X", "zX", "zX"],
+      [".x", "éxøx", "X", "Xøx", "XX"],
       ["a*", "bbbb", "X", "Xbbbb", "XbXbXbXbX"],
+      ["é*", "øø", "X", "Xøø", "XøXøX"],
       ["a*", "", "X", "X", "X"]
     ].freeze
 

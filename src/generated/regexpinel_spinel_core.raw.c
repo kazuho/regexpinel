@@ -5,7 +5,7 @@ static const char *sp_sym_to_s(sp_sym id){(void)id;return "";}
 static const char * gv_nr_proof_code = "";
 static mrb_int gv_nr_proof_insn_count = 0;
 static mrb_int sp_nr_core_add_state(mrb_int lv_pc, mrb_int lv_state_mask);
-static mrb_bool sp_nr_core_match(const char * lv_input, mrb_int lv_start_pos);
+static mrb_bool sp_nr_core_match(const char * lv_input, mrb_int lv_input_len, mrb_int lv_start_pos);
 static mrb_int sp_nr_on_match(mrb_int lv_start_pos, mrb_int lv_end_pos, mrb_int lv_capture_count);
 static inline mrb_int sp_nr_core_insn_count(void);
 static inline mrb_int sp_nr_proof_slot_offset(mrb_int lv_field_index);
@@ -90,13 +90,18 @@ static mrb_int sp_nr_core_add_state(mrb_int lv_pc, mrb_int lv_state_mask) {
   return 0;
 }
 
-static mrb_bool sp_nr_core_match(const char * lv_input, mrb_int lv_start_pos) {
+static mrb_bool sp_nr_core_match(const char * lv_input, mrb_int lv_input_len, mrb_int lv_start_pos) {
     mrb_int lv_match_bit = 0;
     mrb_int lv_state_mask = 0;
     mrb_int lv_add_result = 0;
     mrb_int lv_current_mask = 0;
     mrb_int lv_pos = 0;
-    mrb_int lv_byte = 0;
+    mrb_int lv_b0 = 0;
+    mrb_int lv_codepoint = 0;
+    mrb_int lv_next_pos = 0;
+    mrb_int lv_b1 = 0;
+    mrb_int lv_b2 = 0;
+    mrb_int lv_b3 = 0;
     mrb_int lv_next_mask = 0;
     mrb_int lv_matched = 0;
     mrb_int lv_pc = 0;
@@ -111,9 +116,29 @@ static mrb_bool sp_nr_core_match(const char * lv_input, mrb_int lv_start_pos) {
       return TRUE;
     }
     lv_pos = lv_start_pos;
-    mrb_int _t1 = (mrb_int)strlen(lv_input);
-    while ((lv_pos < _t1)) {
-      lv_byte = ((mrb_int)(unsigned char)(lv_input)[lv_pos]);
+    while ((lv_pos < lv_input_len)) {
+      lv_b0 = ((mrb_int)(unsigned char)(lv_input)[lv_pos]);
+      if ((lv_b0 < 128)) {
+        lv_codepoint = lv_b0;
+        lv_next_pos = (lv_pos + 1);
+      } else
+      if ((lv_b0 < 224)) {
+        lv_b1 = ((mrb_int)(unsigned char)(lv_input)[(lv_pos + 1)]);
+        lv_codepoint = (((lv_b0 & 31) << 6) | (lv_b1 & 63));
+        lv_next_pos = (lv_pos + 2);
+      } else
+      if ((lv_b0 < 240)) {
+        lv_b1 = ((mrb_int)(unsigned char)(lv_input)[(lv_pos + 1)]);
+        lv_b2 = ((mrb_int)(unsigned char)(lv_input)[(lv_pos + 2)]);
+        lv_codepoint = ((((lv_b0 & 15) << 12) | ((lv_b1 & 63) << 6)) | (lv_b2 & 63));
+        lv_next_pos = (lv_pos + 3);
+      } else {
+        lv_b1 = ((mrb_int)(unsigned char)(lv_input)[(lv_pos + 1)]);
+        lv_b2 = ((mrb_int)(unsigned char)(lv_input)[(lv_pos + 2)]);
+        lv_b3 = ((mrb_int)(unsigned char)(lv_input)[(lv_pos + 3)]);
+        lv_codepoint = (((((lv_b0 & 7) << 18) | ((lv_b1 & 63) << 12)) | ((lv_b2 & 63) << 6)) | (lv_b3 & 63));
+        lv_next_pos = (lv_pos + 4);
+      }
       lv_next_mask = 0;
       lv_matched = 0;
       lv_pc = 0;
@@ -122,7 +147,7 @@ static mrb_bool sp_nr_core_match(const char * lv_input, mrb_int lv_start_pos) {
         if (((lv_current_mask & lv_bit) != 0)) {
           lv_op = sp_nr_core_op(lv_pc);
           if ((lv_op == 1)) {
-            if ((lv_byte == sp_nr_core_arg1(lv_pc))) {
+            if ((lv_codepoint == sp_nr_core_arg1(lv_pc))) {
               lv_add_result = sp_nr_core_add_state(sp_nr_core_arg2(lv_pc), lv_next_mask);
               lv_next_mask = (lv_add_result & lv_state_mask);
               if (((lv_add_result & lv_match_bit) != 0)) {
@@ -141,14 +166,14 @@ static mrb_bool sp_nr_core_match(const char * lv_input, mrb_int lv_start_pos) {
         lv_pc = (lv_pc + 1);
       }
       if ((lv_matched != 0)) {
-        sp_nr_on_match(lv_start_pos, (lv_pos + 1), 0);
+        sp_nr_on_match(lv_start_pos, lv_next_pos, 0);
         return TRUE;
       }
       if ((lv_next_mask == 0)) {
         return FALSE;
       }
       lv_current_mask = lv_next_mask;
-      lv_pos = (lv_pos + 1);
+      lv_pos = lv_next_pos;
     }
     return FALSE;
   return FALSE;
@@ -178,18 +203,18 @@ static inline mrb_int sp_nr_proof_slot_offset(mrb_int lv_field_index) {
 static mrb_int sp_nr_proof_write_field(mrb_int lv_field_index, mrb_int lv_value) {
     mrb_int lv_offset = 0;
     lv_offset = sp_nr_proof_slot_offset(lv_field_index);
+    const char * _t1 = gv_nr_proof_code;
+    SP_GC_ROOT(_t1);
+    (((char*)_t1)[lv_offset] = (char)(lv_value & 255), 0);
     const char * _t2 = gv_nr_proof_code;
     SP_GC_ROOT(_t2);
-    (((char*)_t2)[lv_offset] = (char)(lv_value & 255), 0);
+    (((char*)_t2)[(lv_offset + 1)] = (char)((lv_value >> 8) & 255), 0);
     const char * _t3 = gv_nr_proof_code;
     SP_GC_ROOT(_t3);
-    (((char*)_t3)[(lv_offset + 1)] = (char)((lv_value >> 8) & 255), 0);
+    (((char*)_t3)[(lv_offset + 2)] = (char)((lv_value >> 16) & 255), 0);
     const char * _t4 = gv_nr_proof_code;
     SP_GC_ROOT(_t4);
-    (((char*)_t4)[(lv_offset + 2)] = (char)((lv_value >> 16) & 255), 0);
-    const char * _t5 = gv_nr_proof_code;
-    SP_GC_ROOT(_t5);
-    (((char*)_t5)[(lv_offset + 3)] = (char)((lv_value >> 24) & 255), 0);
+    (((char*)_t4)[(lv_offset + 3)] = (char)((lv_value >> 24) & 255), 0);
     return 0;
   return 0;
 }
@@ -202,15 +227,15 @@ static mrb_int sp_nr_proof_read_field(mrb_int lv_field_index) {
     mrb_int lv_b3 = 0;
     lv_offset = sp_nr_proof_slot_offset(lv_field_index);
     lv_b0 = ((mrb_int)(unsigned char)(gv_nr_proof_code)[lv_offset]);
+    const char * _t5 = gv_nr_proof_code;
+    SP_GC_ROOT(_t5);
+    lv_b1 = ((mrb_int)(unsigned char)(_t5)[(lv_offset + 1)]);
     const char * _t6 = gv_nr_proof_code;
     SP_GC_ROOT(_t6);
-    lv_b1 = ((mrb_int)(unsigned char)(_t6)[(lv_offset + 1)]);
+    lv_b2 = ((mrb_int)(unsigned char)(_t6)[(lv_offset + 2)]);
     const char * _t7 = gv_nr_proof_code;
     SP_GC_ROOT(_t7);
-    lv_b2 = ((mrb_int)(unsigned char)(_t7)[(lv_offset + 2)]);
-    const char * _t8 = gv_nr_proof_code;
-    SP_GC_ROOT(_t8);
-    lv_b3 = ((mrb_int)(unsigned char)(_t8)[(lv_offset + 3)]);
+    lv_b3 = ((mrb_int)(unsigned char)(_t7)[(lv_offset + 3)]);
     return (((lv_b0 | (lv_b1 << 8)) | (lv_b2 << 16)) | (lv_b3 << 24));
   return 0;
 }
@@ -225,8 +250,8 @@ static mrb_int sp_nr_proof_decode_code(const char * lv_code_csv) {
     lv_field_index = 0;
     lv_value = 0;
     lv_have_digit = 0;
-    mrb_int _t9 = (mrb_int)strlen(lv_code_csv);
-    while ((lv_pos < _t9)) {
+    mrb_int _t8 = (mrb_int)strlen(lv_code_csv);
+    while ((lv_pos < _t8)) {
       lv_byte = ((mrb_int)(unsigned char)(lv_code_csv)[lv_pos]);
       if (((lv_byte >= 48) && (lv_byte <= 57))) {
         lv_value = (((lv_value * 10) + lv_byte) - 48);
@@ -267,7 +292,7 @@ static inline mrb_int sp_nr_core_arg2(mrb_int lv_pc) {
 static mrb_bool sp_nr_poc_run(const char * lv_code_csv, const char * lv_input, mrb_int lv_start_pos) {
     mrb_bool lv_matched = FALSE;
     sp_nr_proof_decode_code(lv_code_csv);
-    lv_matched = sp_nr_core_match(lv_input, lv_start_pos);
+    lv_matched = sp_nr_core_match(lv_input, (mrb_int)strlen(lv_input), lv_start_pos);
     if (lv_matched) {
       { const char *_ps = (const char *)(("\xff" "status,1" + 1)); if (_ps) { fputs(_ps, stdout); if (!*_ps || _ps[strlen(_ps)-1] != '\n') putchar('\n'); } else putchar('\n'); }
     } else {
@@ -300,9 +325,9 @@ int main(int argc,char**argv){
     }
     lv_nr_start_pos = 0;
     if ((sp_argv.len > 2)) {
-      const char * _t10 = ((2 < sp_argv.len) ? sp_argv.data[(int)2] : NULL);
-      SP_GC_ROOT(_t10);
-      lv_nr_start_pos = ((mrb_int)atoll(_t10));
+      const char * _t9 = ((2 < sp_argv.len) ? sp_argv.data[(int)2] : NULL);
+      SP_GC_ROOT(_t9);
+      lv_nr_start_pos = ((mrb_int)atoll(_t9));
     }
     sp_nr_poc_run(((0 < sp_argv.len) ? sp_argv.data[(int)0] : NULL), ((1 < sp_argv.len) ? sp_argv.data[(int)1] : NULL), lv_nr_start_pos);
   return 0;

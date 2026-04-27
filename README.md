@@ -20,7 +20,7 @@ Initial scope:
 
 - Thompson-style VM executor
 - boolean `match?`
-- byte-subset `sub` / `gsub` replacement
+- UTF-8 codepoint `sub` / `gsub` replacement
 - flat integer instruction encoding
 - reusable execution context
 - no allocation inside the executor
@@ -53,8 +53,10 @@ Spinel-backed extension:
   fixed instruction buffer and supplies `puts`/`printf`-style callbacks outside
   the allocation-free matcher core
 
-Substitution support is deliberately narrow. It uses the VM callback's reported
-accepted byte range and performs literal string replacement outside the executor.
+Substitution support is deliberately narrow. The matcher assumes valid UTF-8,
+iterates by codepoint, reports accepted byte ranges through the VM callback, and
+performs literal string replacement outside the executor by splicing those byte
+ranges.
 Capture expansion, backreferences, and CRuby-compatible greedy quantifier ranges
 are not implemented yet.
 
@@ -78,20 +80,20 @@ An example run on this machine produced:
 
 | Implementation | What It Runs | Avg Checks/Sec | Vs CRuby |
 | --- | --- | ---: | ---: |
-| CRuby `Regexp` | CRuby's built-in regexp engine | 18,634,846 | 1.00x |
-| `Regexpinel::Spinel` | Patched Spinel-generated C for the Ruby VM core, called from a CRuby extension | 30,425,565 | 1.63x |
-| `Regexpinel::CRuby` | Same bytecode executed by the Ruby VM | 933,798 | 0.05x |
+| CRuby `Regexp` | CRuby's built-in regexp engine | 19,037,261 | 1.00x |
+| `Regexpinel::Spinel` | Patched Spinel-generated C for the Ruby VM core, called from a CRuby extension | 31,925,547 | 1.68x |
+| `Regexpinel::CRuby` | Same bytecode executed by the Ruby VM | 902,166 | 0.05x |
 
-The substitution benchmark compares literal replacement for byte-subset cases
+The substitution benchmark compares literal replacement for supported subset cases
 where regexpinel and CRuby produce the same output. It writes raw result data to
 `benchmark/results/substitution.json`. An example run on this machine with
 `loops=200` produced:
 
 | Operation | Implementation | Avg Ops/Sec | Vs CRuby |
 | --- | --- | ---: | ---: |
-| `sub` | CRuby `Regexp` | 5,043,792 | 1.00x |
-| `sub` | `Regexpinel::Spinel` | 12,999,355 | 2.58x |
-| `sub` | `Regexpinel::CRuby` | 419,464 | 0.08x |
-| `gsub` | CRuby `Regexp` | 3,190,835 | 1.00x |
-| `gsub` | `Regexpinel::Spinel` | 11,245,002 | 3.52x |
-| `gsub` | `Regexpinel::CRuby` | 312,826 | 0.10x |
+| `sub` | CRuby `Regexp` | 5,180,703 | 1.00x |
+| `sub` | `Regexpinel::Spinel` | 12,814,179 | 2.47x |
+| `sub` | `Regexpinel::CRuby` | 389,489 | 0.08x |
+| `gsub` | CRuby `Regexp` | 3,169,890 | 1.00x |
+| `gsub` | `Regexpinel::Spinel` | 10,993,974 | 3.47x |
+| `gsub` | `Regexpinel::CRuby` | 295,045 | 0.09x |

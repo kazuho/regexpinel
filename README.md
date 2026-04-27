@@ -1,12 +1,11 @@
 # regexpinel
 
-Proof-of-concept `Regexp` implentation as alternative to that in CRuby. The
-regexp engine is implemented as a small Ruby VM. Spinel is used to compile that
-Ruby VM implementation into an allocation-free C library, which in turn is
-wrapped as a CRuby extension.
+Proof-of-concept `Regexp` implementation as an alternative to that in CRuby. The
+regexp VM is written in Ruby and compiled with Spinel into a C function that is
+allocation-free. Then, that C function is wrapped as a CRuby extension.
 
-This is not a complete regexp engine. The current scope is deliberately small
-and exists to validate the execution model, native boundary, and allocation
+This regexp engine is not feature complete. The current scope is deliberately
+small and exists to validate the execution model, native boundary, and allocation
 proofs before expanding feature coverage.
 
 Spinel is intentionally kept outside this repository. Commands that regenerate or

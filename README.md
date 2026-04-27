@@ -72,6 +72,7 @@ Benchmark:
 ```sh
 SPINEL=/path/to/spinel ruby benchmark/bench_synthetic.rb
 SPINEL=/path/to/spinel ruby benchmark/bench_substitution.rb
+SPINEL=/path/to/spinel ruby benchmark/bench_long_inputs.rb
 ```
 
 The synthetic benchmark compares three implementations over the same supported
@@ -97,3 +98,16 @@ where regexpinel and CRuby produce the same output. It writes raw result data to
 | `gsub` | CRuby `Regexp` | 3,169,890 | 1.00x |
 | `gsub` | `Regexpinel::Spinel` | 10,993,974 | 3.47x |
 | `gsub` | `Regexpinel::CRuby` | 295,045 | 0.09x |
+
+The long-input benchmark uses anchored matches over roughly 1 KiB inputs and
+reports throughput in MiB/sec to reduce the influence of per-call overhead. It
+writes raw result data to `benchmark/results/long_inputs.json`. An example run
+on this machine with `loops=50` produced:
+
+| Case | Pattern | CRuby MiB/Sec | `Regexpinel::Spinel` MiB/Sec | `Regexpinel::CRuby` MiB/Sec |
+| --- | --- | ---: | ---: | ---: |
+| long star literal match | `z*ab` | 375.0 | 193.6 | 1.2 |
+| long star literal miss | `z*ab` | 4,624.2 | 176.0 | 1.2 |
+| long plus match | `a+b` | 418.0 | 210.0 | 1.3 |
+| long plus miss | `a+b` | 406.0 | 216.9 | 1.3 |
+| long UTF-8 match | `é*x` | 388.9 | 389.3 | 2.4 |
